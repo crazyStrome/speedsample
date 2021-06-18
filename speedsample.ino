@@ -1,15 +1,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
-#include <Adafruit_ADS1015.h>
+
 
 // WiFi parameters
 const char* ssid = "MI8pro";
 const char* password = "12345600";
-// HotSpot config
-IPAddress local_IP(192,168,1,100);
-IPAddress gateway(192,168,1,100);
-IPAddress subnet(255,255,255,0);
 
 //Web Server
 ESP8266WebServer server(8080);
@@ -17,7 +13,7 @@ ESP8266WebServer server(8080);
 String rootpage = String("")+
 "<!DOCTYPE html>\n" +
 "<script src='https://cdn.bootcdn.net/ajax/libs/jquery/3.5.1/jquery.js'></script>\n" +
-"<h1>current and voltage sample</h1>\n" +
+"<h1>Speed Sample</h1>\n" +
 "<br/>\n" +
 "<body>\n" +
 "<script type='text/javascript'>\n" +
@@ -26,14 +22,20 @@ String rootpage = String("")+
 "    })\n" +
 "    function reflush() {\n" +
 "        $.getJSON('./get', function(json) {\n" +
-"            $('#tmp')[0].innerHTML = json.voltage\n" +
-"            $('#voltage').html($('#tmp').html())\n" +
+"            $('#tmp')[0].innerHTML = json.t1\n" +
+"            $('#t1').html($('#tmp').html())\n" +
 "\n" +
-"            $('#tmp')[0].innerHTML = json.current\n" +
-"            $('#current').html($('#tmp').html())\n" +
+"            $('#tmp')[0].innerHTML = json.t2\n" +
+"            $('#t2').html($('#tmp').html())\n" +
 "\n" +
-"            $('#tmp')[0].innerHTML = json.power\n" +
-"            $('#power').html($('#tmp').html())\n" +
+"            $('#tmp')[0].innerHTML = json.delta\n" +
+"            $('#delta').html($('#tmp').html())\n" +
+"\n" +
+"            $('#tmp')[0].innerHTML = json.distance\n" +
+"            $('#distance').html($('#tmp').html())\n" +
+"\n" +
+"            $('#tmp')[0].innerHTML = json.speed\n" +
+"            $('#speed').html($('#tmp').html())\n" +
 "\n" +
 "            $('#tmp')[0].innerHTML = json.serial\n" +
 "            $('#serial').html($('#tmp').html())\n" +
@@ -41,27 +43,41 @@ String rootpage = String("")+
 "    }\n" +
 "</script>\n" +
 "    <label id='tmp' hidden></label>\n" +
-"    <label>voltage: </label>\n" +
+"    <label>Start Time: </label>\n" +
 "    <b>\n" +
 "        <i>\n" +
-"            <label id='voltage'>0.00</label>\n" +
+"            <label id='t1'>0</label>\n" +
 "        </i>\n" +
 "    </b>\n" +
-"    V<br/>\n" +
-"    <label>current: </label>\n" +
+"    us<br/>\n" +
+"    <label>End Time: </label>\n" +
 "    <b>\n" +
 "        <i>\n" +
-"            <label id='current'>0.00</label>\n" +
+"            <label id='t2'>0.00</label>\n" +
 "        </i>\n" +
 "    </b>\n" +
-"    A<br/>\n" +
-"    <label>power: </label>\n" +
+"    us<br/>\n" +
+"    <label>Delta Time: </label>\n" +
 "    <b>\n" +
 "        <i>\n" +
 "            <label id='power'>0.00</label>\n" +
 "        </i>\n" +
 "    </b>\n" +
-"    W<br/>\n" +
+"    us<br/>\n" +
+"    <label>Distance: </label>\n" +
+"    <b>\n" +
+"        <i>\n" +
+"            <label id='distance'>0.00</label>\n" +
+"        </i>\n" +
+"    </b>\n" +
+"    cm<br/>\n" +
+"    <label>Speed: </label>\n" +
+"    <b>\n" +
+"        <i>\n" +
+"            <label id='speed'>0.00</label>\n" +
+"        </i>\n" +
+"    </b>\n" +
+"    m/s<br/>\n" +
 "    <label>serial-number: </label>\n" +
 "    <b>\n" +
 "        <i>\n" +
@@ -70,11 +86,17 @@ String rootpage = String("")+
 "    </b>\n" +
 "</body>\n";
 
-// 电压电流测量
-Adafruit_ADS1115 ads(0x48);
-float voltage = 5.00;
-float current = 1.11;
-float power = voltage * current;
+// 采样时间变量
+unsigned long t1, t2, delta;
+// distance单位cm
+unsigned long distance;
+double sspeed;
+
+
+// 引脚
+// D1是第一个传感器的引脚
+int startPin = D1;
+int endPin = D2;
 void setup()
 {
   //设置端口号
@@ -88,13 +110,11 @@ void setup()
   WiFi.begin(ssid, password);
   //失败重试次数
   int count = 30;
-  bool flag = false;
   while (count >= 0) {
     if (WiFi.status() == WL_CONNECTED) {
       Serial.printf("\nWiFi %s is connected\n", ssid);
       Serial.print("device IP is ");
       Serial.println(WiFi.localIP());
-      flag = true;
       break;
     }
     delay(500);
@@ -103,31 +123,23 @@ void setup()
   }
   Serial.println("end connecting to WiFi");
 
-//  if (!flag) {
-//    //设置热点AP
-//    Serial.println("WiFi is not connected, so start setting SoftAP");
-//    Serial.println(WiFi.softAP("ESPsoftAP", "12345600", 1, false, 4) ? "Ready" : "Failed!");
-//
-//    Serial.print("Soft-AP IP address = ");
-//    Serial.println(WiFi.softAPIP());
-//    Serial.println("end setting SoftAP");
-//  }
   // 设置服务器
   
   server.on("/", HTTP_GET, handleRoot);
   server.on("/get", HTTP_GET, handleGet);
   server.begin();
 
-  ads.begin();
 }
 void handleRoot() {
   server.send(200, "text/html", rootpage);  
 }
 void handleGet() {
-  StaticJsonDocument<100> json;
-  json["voltage"] = voltage;
-  json["current"] = current;
-  json["power"] = power;
+  StaticJsonDocument<200> json;
+  json["t1"] = t1;
+  json["t2"] = t2;
+  json["delta"] = delta;
+  json["distance"] = distance;
+  json["speed"] = sspeed;
   char serial[100];
   sprintf(serial, "0x%x", millis());
   json["serial"] = serial;
@@ -137,22 +149,7 @@ void handleGet() {
   Serial.printf("handleGet: %s\n", msg);
 }
 void loop() {
-  //ADC电压电流采集，功率计算
-  int16_t adc0, adc1, adc2, adc3;
-  adc0 = ads.readADC_SingleEnded(0);
-  adc1 = ads.readADC_SingleEnded(1);
-  adc2 = ads.readADC_SingleEnded(2);
-  adc3 = ads.readADC_SingleEnded(3);
-  // AD测得的值
-  voltage = ((adc0 - adc1) * 0.1875) / 1000;
-  current = (adc3 - adc2)*0.1875 / 1000;
-
-  //矫正，通过取两个点求斜率y=ax+b,a=2.028,b=1.1568,x是测量值,y是实际输入电压值
-  voltage = 2.028 * voltage + 1.1568;
-  //current就是测得的电压除以采样电阻0.2
-  current = current * 5;
   
-  power = voltage * current;
   //server处理客户端的请求
   server.handleClient();
 }
