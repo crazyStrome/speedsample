@@ -4,8 +4,8 @@
 
 
 // WiFi parameters
-const char* ssid = "MI8pro";
-const char* password = "12345600";
+const char* ssid = "HHHHHHHHH";
+const char* password = "hanshoupeng";
 
 //Web Server
 ESP8266WebServer server(8080);
@@ -60,7 +60,7 @@ String rootpage = String("")+
 "    <label>Delta Time: </label>\n" +
 "    <b>\n" +
 "        <i>\n" +
-"            <label id='power'>0.00</label>\n" +
+"            <label id='delta'>0.00</label>\n" +
 "        </i>\n" +
 "    </b>\n" +
 "    us<br/>\n" +
@@ -87,10 +87,10 @@ String rootpage = String("")+
 "</body>\n";
 
 // 采样时间变量
-unsigned long t1, t2, delta;
+volatile unsigned long t1, t2, delta;
 // distance单位cm
-unsigned long distance;
-double sspeed;
+volatile unsigned long distance = 10;
+volatile double sspeed;
 
 
 // 引脚
@@ -124,10 +124,15 @@ void setup()
   Serial.println("end connecting to WiFi");
 
   // 设置服务器
-  
+  Serial.println("start config server");
   server.on("/", HTTP_GET, handleRoot);
   server.on("/get", HTTP_GET, handleGet);
   server.begin();
+  Serial.println("end config server");
+
+  //  设置中断函数
+  attachInterrupt(startPin, startInt, FALLING);
+  attachInterrupt(endPin, endInt, FALLING);
 
 }
 void handleRoot() {
@@ -146,10 +151,23 @@ void handleGet() {
   char msg[measureJson(json) + 1];
   serializeJson(json, msg, measureJson(json) + 1);
   server.send(200, "text/plain", msg);
-  Serial.printf("handleGet: %s\n", msg);
+//  Serial.printf("handleGet: %s\n", msg);
 }
 void loop() {
+
+  delta = t2 - t1;
+  sspeed = distance * 10000.0 / delta;
   
   //server处理客户端的请求
   server.handleClient();
+  delay(200);
+}
+// 这是中断处理函数
+ICACHE_RAM_ATTR void startInt() {
+  t1 = micros();
+//  Serial.printf("Start get a falling signal at [%d]\n", t1);
+}
+ICACHE_RAM_ATTR void endInt() {
+  t2 = micros();
+//  Serial.printf("end get a falling signal at [%d]\n", t2);
 }
