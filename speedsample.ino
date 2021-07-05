@@ -1,14 +1,16 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
+#include <ESP8266mDNS.h>
 
 
 // WiFi parameters
 const char* ssid = "HHHHHHHHH";
 const char* password = "hanshoupeng";
+const char* deviceName = "esp8266";
 
 //Web Server
-ESP8266WebServer server(8080);
+ESP8266WebServer server(80);
 
 String rootpage = String("")+
 "<!DOCTYPE html>\n" +
@@ -22,6 +24,9 @@ String rootpage = String("")+
 "    })\n" +
 "    function reflush() {\n" +
 "        $.getJSON('./get', function(json) {\n" +
+"            $('#tmp')[0].innerHTML = json.name\n" +
+"            $('#id').html($('#tmp').html())\n" +
+"\n" +
 "            $('#tmp')[0].innerHTML = json.t1\n" +
 "            $('#t1').html($('#tmp').html())\n" +
 "\n" +
@@ -43,6 +48,13 @@ String rootpage = String("")+
 "    }\n" +
 "</script>\n" +
 "    <label id='tmp' hidden></label>\n" +
+"    <label>Device ID: </label>\n" +
+"    <b>\n" +
+"        <i>\n" +
+"            <label id='id'>" + deviceName + "</label>\n" +
+"        </i>\n" +
+"    </b>\n" +
+"    <br/>\n" +
 "    <label>Start Time: </label>\n" +
 "    <b>\n" +
 "        <i>\n" +
@@ -103,11 +115,19 @@ void setup()
   Serial.begin(115200);
   Serial.println();
 
+  
+  //  设置中断函数
+  attachInterrupt(startPin, startInt, FALLING);
+  attachInterrupt(endPin, endInt, FALLING);
+
   Serial.println("Config WIFI, first connect to WIFI, second release a WIFI spot");
 
   //设置WiFi连接
   Serial.printf("start connecting to WIFI:%s\n", ssid);
+
+  WiFi.hostname(deviceName);
   WiFi.begin(ssid, password);
+//  WiFi.hostname(deviceName);
   //失败重试次数
   int count = 30;
   while (count >= 0) {
@@ -122,29 +142,38 @@ void setup()
     Serial.print(".");
   }
   Serial.println("end connecting to WiFi");
+//  Serial.println(WiFi.());
+
+  if (MDNS.begin(deviceName)) {
+    Serial.println("MDNS started");
+  }
 
   // 设置服务器
   Serial.println("start config server");
-  server.on("/", HTTP_GET, handleRoot);
+  server.on("/",  handleRoot);
   server.on("/get", HTTP_GET, handleGet);
   server.begin();
   Serial.println("end config server");
 
-  //  设置中断函数
-  attachInterrupt(startPin, startInt, FALLING);
-  attachInterrupt(endPin, endInt, FALLING);
+  // 设置mDNS
+  Serial.println("starting config mNDS");
+
+  Serial.println("mDNS responder started");
+//  MDNS.addService("http", "tcp", 80); // Announce esp tcp service on port 8080
+  Serial.println("Ending mDNS config");
 
 }
 void handleRoot() {
   server.send(200, "text/html", rootpage);  
 }
 void handleGet() {
-  StaticJsonDocument<200> json;
+  StaticJsonDocument<400> json;
+  json["name"] = deviceName;
   json["t1"] = t1;
   json["t2"] = t2;
   json["delta"] = delta;
   json["distance"] = distance;
-  json["speed"] = sspeed;
+  json["speed"] = String(sspeed);
   char serial[100];
   sprintf(serial, "0x%x", millis());
   json["serial"] = serial;
