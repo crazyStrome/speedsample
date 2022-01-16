@@ -22,6 +22,9 @@ String rootpage = String("")+
 "    $(function () {\n" +
 "        setInterval(reflush, 1000)\n" +
 "    })\n" +
+"    function reset(){\n" + 
+"        $.post(./reset);\n" + 
+"    }\n" + 
 "    function reflush() {\n" +
 "        $.getJSON('./get', function(json) {\n" +
 "            $('#tmp')[0].innerHTML = json.name\n" +
@@ -96,6 +99,9 @@ String rootpage = String("")+
 "            <label id='serial'>0.00</label>\n" +
 "        </i>\n" +
 "    </b>\n" +
+"    <br/>\n" +
+"    <button class='btn btn-app btn-block' type='submit'\n" +
+"	    style='width: 70%' id='del' onclick='reset()'>RESET</button>\n" + 
 "</body>\n";
 
 // 采样时间变量
@@ -103,6 +109,7 @@ volatile unsigned long t1, t2, delta;
 // distance单位cm
 volatile unsigned long distance = 10;
 volatile double sspeed;
+volatile int state = 0;
 
 
 // 引脚
@@ -152,6 +159,7 @@ void setup()
   Serial.println("start config server");
   server.on("/",  handleRoot);
   server.on("/get", HTTP_GET, handleGet);
+  server.on("/reset", handleReset)
   server.begin();
   Serial.println("end config server");
 
@@ -182,6 +190,10 @@ void handleGet() {
   server.send(200, "text/plain", msg);
 //  Serial.printf("handleGet: %s\n", msg);
 }
+void handleReset() {
+  Serial.printf("reset state to 0, cur:[%d]\n", state);
+  state = 0;
+}
 void loop() {
 
   delta = t2 - t1;
@@ -193,10 +205,16 @@ void loop() {
 }
 // 这是中断处理函数
 ICACHE_RAM_ATTR void startInt() {
-  t1 = micros();
+  if (state == 0) {
+    t1 = micros();
+    state = 1;
+  }
 //  Serial.printf("Start get a falling signal at [%d]\n", t1);
 }
 ICACHE_RAM_ATTR void endInt() {
-  t2 = micros();
+  if (state == 1) {
+    t2 = micros();
+    state = 2;
+  }
 //  Serial.printf("end get a falling signal at [%d]\n", t2);
 }
